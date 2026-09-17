@@ -17,7 +17,7 @@ npm run preview      # testa o build de produção
 
 | Plataforma | Como publicar | Custo |
 |---|---|---|
-| **GitHub Pages** | Já configurado em `.github/workflows/deploy.yml` — dê push na `main` e ative Pages → *GitHub Actions* | grátis |
+| **GitHub Pages** | `mkdir -p .github/workflows && git mv .github/deploy-pages.yml.template .github/workflows/deploy.yml`, commit, e ative Pages → *GitHub Actions* | grátis |
 | **Vercel** | Importe o repo. `vercel.json` já define build e output | grátis |
 | **Netlify** | Importe o repo. `netlify.toml` já configurado | grátis |
 | **Cloudflare Pages** | Build `npm run build`, output `dist` | grátis |
