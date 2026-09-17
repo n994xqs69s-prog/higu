@@ -18,15 +18,25 @@ const SAVE_KEY = 'higu_save_v1';
 class Game {
   constructor() {
     this.canvas = $('#game');
-    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // --- Qualidade adaptativa: o jogo se ajusta ao hardware do jogador ------
+    const mem = navigator.deviceMemory || 4;
+    const cpu = navigator.hardwareConcurrency || 4;
+    const movel = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+    this.qualidade = (movel || mem <= 2 || cpu <= 2) ? 'baixa' : (mem <= 4 || cpu <= 4) ? 'media' : 'alta';
+    const Q = this.qualidade;
+
+    this.renderer = new THREE.WebGLRenderer({
+      canvas: this.canvas, antialias: Q === 'alta',
+      powerPreference: Q === 'baixa' ? 'low-power' : 'high-performance',
+    });
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, Q === 'alta' ? 2 : Q === 'media' ? 1.5 : 1));
+    this.renderer.shadowMap.enabled = Q !== 'baixa';
+    this.renderer.shadowMap.type = Q === 'alta' ? THREE.PCFSoftShadowMap : THREE.BasicShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
 
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(66, innerWidth / innerHeight, 0.1, 2200);
+    this.camera = new THREE.PerspectiveCamera(66, innerWidth / innerHeight, 0.1, Q === 'alta' ? 2200 : Q === 'media' ? 1200 : 700);
     this.clock = new THREE.Clock();
 
     this.horaDoDia = 0.32;
@@ -52,7 +62,7 @@ class Game {
 
   // ======================= BOOT ==========================================
   async iniciarMundo() {
-    const w = buildWorld(this.scene);
+    const w = buildWorld(this.scene, this.qualidade);
     Object.assign(this, w);
     this.spells = new SpellSystem(this.scene, this);
     this.gm = new GameMaster(this);
@@ -73,7 +83,8 @@ class Game {
 
   spawnInimigos() {
     const tipos = Object.keys(BESTIARIO);
-    for (let i = 0; i < 95; i++) {
+    const nInim = this.qualidade === 'alta' ? 95 : this.qualidade === 'media' ? 60 : 35;
+    for (let i = 0; i < nInim; i++) {
       const x = (Math.random() - 0.5) * WORLD_SIZE * 0.85;
       const z = (Math.random() - 0.5) * WORLD_SIZE * 0.85;
       const b = biomeAt(x, z);
@@ -186,7 +197,7 @@ class Game {
 
   ganharXP(v) {
     const p = this.player;
-    p.xp += Math.round(v * (p.build.raca === 'humano' ? 1.1 : 1));
+    p.xp += Math.round(v * ((p.ficha.tags || []).includes('versatil') ? 1.1 : 1));
     let subiu = false;
     while (p.xp >= xpParaNivel(p.nivel)) {
       p.xp -= xpParaNivel(p.nivel);
@@ -471,6 +482,18 @@ class Game {
   loop() {
     requestAnimationFrame(() => this.loop());
     const dt = Math.min(0.05, this.clock.getDelta());
+
+    // Auto-ajuste: se o FPS ficar abaixo de 30 por 3 s seguidos, baixa a resolução.
+    this._fpsAcc = (this._fpsAcc || 0) + dt; this._fpsN = (this._fpsN || 0) + 1;
+    if (this._fpsAcc >= 3) {
+      const fps = this._fpsN / this._fpsAcc;
+      if (fps < 30 && (this._degrau || 0) < 2) {
+        this._degrau = (this._degrau || 0) + 1;
+        this.renderer.setPixelRatio(Math.max(0.65, this.renderer.getPixelRatio() * 0.78));
+        if (this._degrau === 2) this.renderer.shadowMap.enabled = false;
+      }
+      this._fpsAcc = 0; this._fpsN = 0;
+    }
     if (this.creator && !$('#screen-creator').classList.contains('hidden')) this.creator.tick(dt);
     if (this.rodando) this.update(dt);
     this.renderer.render(this.scene, this.camera);
@@ -507,7 +530,21 @@ function tela(id) {
   if (id) $(id).classList.remove('hidden');
 }
 
+function temWebGL() {
+  try {
+    const c = document.createElement('canvas');
+    return !!(c.getContext('webgl2') || c.getContext('webgl'));
+  } catch { return false; }
+}
+
 async function boot() {
+  if (!temWebGL()) {
+    document.body.insertAdjacentHTML('beforeend',
+      `<div class="compat"><div><h2>WebGL indisponível</h2>
+      <p>Este jogo precisa de aceleração gráfica. Ative o WebGL nas configurações do navegador
+      ou tente pelo Chrome, Edge ou Firefox atualizados.</p></div></div>`);
+    return;
+  }
   const lb = $('#lbar');
   for (let i = 0; i <= 100; i += 20) { lb.style.width = i + '%'; await new Promise(r => setTimeout(r, 40)); }
   await game.iniciarMundo();
@@ -528,7 +565,7 @@ $('#btnContinue').onclick = () => {
 };
 
 $('#btnMulti').onclick = () => {
-  const nome = prompt('Nome da sala multiplayer (todos na mesma sala jogam juntos):', 'ardel');
+  const nome = prompt('Nome da sala (P2P — sem servidor).\nTodos que digitarem o MESMO nome jogam juntos:', 'ardel');
   if (!nome) return;
   game.salaMulti = nome;
   tela('#screen-creator');

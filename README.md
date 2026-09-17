@@ -1,95 +1,119 @@
 # HIGU — Crônicas do Véu
 
-RPG 3D de mundo aberto, no navegador, com **criação de personagem detalhada**, **magia governada por física real**, **construção de base**, **multiplayer** e um **Mestre de Jogo com IA** que arbitra ações improvisadas com base em argumentos.
+RPG 3D de mundo aberto no navegador, com **18 raças**, **12 classes**, magia governada por física real, construção de base, multiplayer P2P e um **Mestre de Jogo com IA** que arbitra ações improvisadas por argumentação.
 
-Feito em `three.js` puro, sem nenhum asset externo: **todo o mundo, texturas, avatares e criaturas são gerados proceduralmente em runtime**.
+**Site 100% estático, uma única dependência (`three`), ~195 kB gzipped.** Sem backend, sem banco de dados, sem variáveis de ambiente, sem custo. Roda em GitHub Pages, Vercel, Netlify, Cloudflare Pages ou itch.io sem alterar uma linha.
 
 ---
 
-## Rodar
+## Rodar e publicar
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173  (desenvolvimento)
-npm run server     # servidor multiplayer em :3000 (o dev proxeia /ws para ele)
-npm start          # build de produção + servidor único em :3000
+npm run dev          # http://localhost:5173
+npm run build        # gera dist/ — pronto para qualquer host estático
+npm run preview      # testa o build de produção
 ```
 
-Para multiplayer, rode `npm run server` junto com `npm run dev`.
+| Plataforma | Como publicar | Custo |
+|---|---|---|
+| **GitHub Pages** | Já configurado em `.github/workflows/deploy.yml` — dê push na `main` e ative Pages → *GitHub Actions* | grátis |
+| **Vercel** | Importe o repo. `vercel.json` já define build e output | grátis |
+| **Netlify** | Importe o repo. `netlify.toml` já configurado | grátis |
+| **Cloudflare Pages** | Build `npm run build`, output `dist` | grátis |
+| **itch.io** | Faça upload do `dist/` zipado como HTML5 | grátis |
+
+`base: './'` no Vite garante caminhos relativos — funciona tanto na raiz quanto em subpasta (`usuario.github.io/higu/`).
+
+### Leve e fluido em qualquer máquina
+
+O jogo **detecta o hardware e se ajusta sozinho**:
+
+- Lê `deviceMemory`, `hardwareConcurrency` e user-agent → define qualidade **alta / média / baixa**.
+- Escala: densidade de vegetação (2600 → 728 árvores), resolução da malha do terreno, número de inimigos (95 → 35), tamanho do shadow map, distância de renderização (2200 → 700 m), antialiasing e pixel ratio.
+- **Auto-degradação em tempo real:** se o FPS cair abaixo de 30 por 3 s, reduz a resolução e, se persistir, desliga sombras.
+- Detecta ausência de WebGL e mostra aviso claro em vez de tela preta.
 
 ---
 
-## Criação de personagem
+## Raças (18)
 
-Seis abas com preview 3D girável em tempo real. **Nada é cosmético** — toda escolha altera números do motor.
+Cada raça tem **massa real, tolerância térmica, alcance e tags mecânicas** — nada é cosmético.
 
-| Aba | O que define |
-|---|---|
-| **Raça** | 7 raças (Humano, Elfo, Anão, Orc, Draconato, Feérico, Autômato Rúnico). Cada uma com massa base, faixa de altura/peso, tolerância térmica, alcance e uma passiva que muda as regras (o Autômato afunda na água e não regenera; o Feérico plana e é arremessado pelo vento). |
-| **Origem & Classe** | 6 origens (o *conhecimento prévio* que o Mestre IA reconhece nos seus argumentos) × 6 classes (Arcanista, Guerreiro Rúnico, Patrulheiro, Clérigo, Invocador, Artífice). |
-| **Atributos** | 6 atributos, 12 pontos + traços. Cada ponto muda valores reais: kg de carga, metros de pulo, mana máxima. 8 traços — defeitos **devolvem** pontos. |
-| **Magia** | 8 escolas, cada uma com uma **lei física própria** documentada. 32 magias com custo, cooldown e comportamento distintos. |
-| **Corpo & Aparência** | Sliders de altura (1,1–2,6 m), massa (25–400 kg), musculatura e ombros — alteram o modelo 3D *e* a simulação. Cores de pele/cabelo/olhos/vestes, nome e biografia. |
-| **Revisão** | Ficha completa com os números derivados: velocidade em m/s e km/h, altura de pulo, carga máxima, velocidade e alcance balístico de um arremesso de 50 kg. |
+| Raça | Conceito | Identidade mecânica |
+|---|---|---|
+| **Humano** | Versátil | +1 em TODOS os atributos, +10% XP, ponto livre extra |
+| **Elfo** | Ágil e mágico | −30% dano de queda, +15% precisão, imune a sono |
+| **Anão** | Resistente | Imune a empurrão, +40% ao construir, resiste a veneno |
+| **Halfling** | Pequeno e sortudo | **Rerrola falhas** do Mestre IA · só 25 kg |
+| **Dragonborn** | Sopro elemental | Cone elemental + 50% de resistência ao próprio elemento |
+| **Tiefling** | Descendência demoníaca | Imune a fogo · barganha vale como argumento |
+| **Meio-Orc** | Forte e agressivo | Sobrevive a 0 PV 1×/descanso · +50% dano com pouca vida |
+| **Meio-Elfo** | Humano + elfo | Ponto livre extra, visão noturna, queda suave |
+| **Gnomo** | Pequeno e inteligente | **+2 no Mestre IA** em engenharia, mecanismos e química |
+| **Tabaxi** | Povo felino | **Imune a dano de queda** (cai de pé) · escala paredes |
+| **Aarakocra** | Pássaro humanoide | **Voo real** (segure Espaço) · ossos ocos (massa ×0,5) |
+| **Genasi** | Ligado a um elemento | Escolha fogo/água/terra/ar: imunidade + 40% dano + 25% desconto |
+| **Goliath** | Gigante humanoide | **Carga DOBRADA** (438 kg vs 129 do humano) · imune a frio |
+| **Aasimar** | Sangue celestial | Curas +30%, resiste a radiante/necrótico, emite luz |
+| **Kenku** | Corvo humanoide | **Mímica perfeita** — enganar é mecanismo válido · +25% furtivo |
+| **Tortle** | Tartaruga humanoide | **+35% de armadura** (75% total — o maior do jogo) |
+| **Leonin** | Povo leão | Rugido de medo em área · garras (+40% dano físico) |
+| **Warforged** | Construto mecânico | Imune a veneno/sufocamento · **não cura** · **afunda na água** |
 
-**42 combinações raça × classe** validadas por teste automatizado.
+## Classes (12)
+
+| Classe | Recurso | Identidade mecânica |
+|---|---|---|
+| **Bárbaro** | Fúria | +60% dano, −50% dano recebido enquanto enfurecido · **não conjura magia** |
+| **Bardo** | Inspiração | Canções de buff/debuff em área · ressonância como argumento |
+| **Bruxo** | Pacto | Mana −30%, mas **custo −35% e cooldown −25%** |
+| **Clérigo** | Fé | Curas **+40%** · único que ressuscita aliados |
+| **Druida** | Vínculo Natural | Forma Selvagem: urso/lobo/águia **mudam sua massa de verdade** |
+| **Feiticeiro** | Fonte Arcana | **Metamagia** (Shift ao conjurar: dobra custo, dobra efeito) |
+| **Guerreiro** | Fôlego | Interrompe conjurações · armadura pesada = **condutor de raio** |
+| **Ladino** | Foco | Furtivo ×3 pelas costas · **vê pontos estruturais frágeis** (+3 no GM) |
+| **Monge** | Ki | +2 m/s · imune a queda · devolve projéteis usando o momento original |
+| **Paladino** | Juramento | Punição divina · aura de −20% dano a aliados em 10 m |
+| **Patrulheiro** | Foco Natural | Maior alcance · ignora atrito de pântano e neve |
+| **Mago** | Mana | **3 escolas** e combinação de elementos · +2 no GM por física/química |
+
+**216 combinações raça × classe** validadas por teste automatizado: todas geram ficha coerente e avatar 3D montado.
 
 ---
 
 ## As leis do mundo
 
-O motor físico não é decorativo — é a base da tática.
+- **Massa domina tudo.** O mesmo impulso de 950 N·s: Halfling (25 kg) → **38,0 m/s**; Humano (78 kg) → **12,2 m/s**; Goliath (190 kg) → **5,0 m/s**; Warforged (240 kg) → **4,0 m/s**.
+- **Queda = ½mv²**, modulada por `quedaMult` (Tabaxi/Aarakocra/Monge = 0, Elfo = 0,7).
+- **Fogo** precisa de combustível e O₂ (inflamabilidade por bioma: floresta 1,0 → neve 0,0).
+- **Eletricidade** segue o menor caminho: alvo molhado ou blindado leva ×1,8 e a corrente salta em cadeia.
+- **Água pesa**, **terra não cria matéria**, **estruturas sem apoio desabam** em cascata.
+- Empuxo de Arquimedes, atrito por bioma e ciclo dia/noite de 10 min.
 
-- **Massa importa.** Todo impulso é força ÷ massa. O mesmo `salto_vento` (950 N·s) dá **25,0 m/s** a um Feérico de 38 kg e **3,4 m/s** a um Autômato de 280 kg.
-- **Queda = ½mv².** Acima de ~3 m você se machuca; uma queda de 40 m causa ~179 de dano.
-- **Fogo precisa de combustível e O₂.** Inflamabilidade por bioma: floresta 1,0 · planície 0,7 · deserto 0,35 · pântano 0,25 · água/neve 0,0.
-- **Eletricidade segue o menor caminho.** Condutividade por bioma; alvos molhados levam ×1,8 e a corrente salta em cadeia entre eles e quem veste metal.
-- **Água pesa.** O volume que você move é limitado pelo Intelecto. No deserto o custo triplica.
-- **Terra não cria matéria.** Sem solo, sem geomancia. Muros erguidos viram colisores reais.
-- **Estruturas desabam.** Peças de construção sem apoio caem, e o colapso se propaga recursivamente.
-- **Empuxo real** na água (Arquimedes), **atrito por superfície** (gelo escorrega, pântano suga), **ciclo dia/noite** de 10 min afetando magia de sombra.
+## O Mestre do Véu (tecla G)
 
----
+Descreva qualquer ação em texto livre. Ele lê o ambiente real (bioma, condutividade, inflamabilidade, materiais em 18 m, massa e fraqueza de cada inimigo), avalia o mecanismo contra **14 conhecimentos de física real**, aplica **bônus específicos da sua raça e classe**, detecta trapaça, rola d20 contra uma DC calculada e **mostra todo o raciocínio linha a linha**.
 
-## O Mestre do Véu (bot IA)
+Taxas medidas (150–300 rolagens por caso):
 
-Tecla **G**. Descreva em texto livre uma ação que o jogo não tem botão para fazer. O Mestre:
-
-1. **Lê o ambiente real** — bioma, densidade de mana, condutividade, inflamabilidade, materiais num raio de 18 m, e para cada inimigo próximo: nome, distância, massa, fraqueza, se está molhado, se é metálico/construto/etéreo.
-2. **Extrai intenção e recursos** do seu texto (8 escolas mágicas, ~50 verbos de manipulação física).
-3. **Checa capacidade** — atributos, escolas conhecidas, mana, e a massa que sua Força realmente ergue (com cálculo de velocidade de arremesso e alcance balístico).
-4. **Avalia o argumento** — causalidade explícita ("porque", "de modo que"), especificidade, e **14 conhecimentos de física real** que dão bônus grandes quando bem aplicados: alavanca e torque, empuxo, condutividade, triângulo do fogo, dilatação e choque térmico, centro de massa, pressão/hidráulica, atrito, mudança de estado, ressonância, máquinas simples, óptica, osmose, energia potencial. Mais 4 entradas de lore do próprio jogo.
-5. **Detecta trapaça** — declarar resultado em vez de ação, pedir matéria do nada, "sou invencível", teleporte sem âncora. Cada bandeira: DC +10 e perda de reputação.
-6. **Rola d20 + bônus contra a DC** e aplica o efeito mecânico no jogo, mostrando **todo o raciocínio linha a linha** — cada +2, cada −6, e por quê. Depois te ensina a argumentar melhor.
-
-Curva de dificuldade medida em 200 rolagens por caso:
-
-| Proposta | Taxa de sucesso |
+| Situação | Sucesso |
 |---|---|
-| `"ataco"` | 26% |
-| `"jogo fogo nele"` | 36% |
-| *"Molho o cavaleiro com um jato de água **porque** a armadura de metal dele vira um condutor perfeito, **de modo que** minha corrente encontra o caminho de menor resistência…"* | **98%** |
-| *"Uso o tronco caído como **alavanca** com uma pedra de ponto de apoio, **de modo que** o **torque** multiplica minha força e desloca o **centro de massa** do golem para fora da base de apoio…"* | **96%** |
-| `"Eu venço todos instantaneamente porque sou invencível"` | **0%** (recusa sem rolar) |
+| `"ataco ele"` (vago) | 10–28% |
+| Gnomo citando polia e plano inclinado | **95%** |
+| Tabaxi saltando penhasco ("caio de pé") | **94%** |
+| Warforged atravessando veneno ("não respiro") | **82%** |
+| Kenku imitando a voz do capitão inimigo | **69%** |
+| Goliath erguendo 300 kg | **41%** (é pesado mesmo) |
+| `"eu venço todos porque sou invencível"` | **0%** — recusado sem rolar |
 
----
+## Multiplayer sem servidor
 
-## Mundo e conteúdo
-
-- **1200 × 1200 m** de terreno contínuo por heightmap fBm, com 8 biomas: Planícies de Ardel, Mata do Sussurro, Areias de Kharun, Pântano de Mir, Escarpas de Vhorn, Coroa Gélida, o Véu Rasgado e as águas. Montanhas até 73 m, cratera do Véu, vila de Pedravil, ruínas circulares e a Torre do Véu de 56 m.
-- **Vegetação e rochas instanciadas** (milhares de árvores, pedras e cristais), todos com colisores reais.
-- **7 criaturas** + **4 chefes** com 3 fases cada e fraquezas que exigem raciocínio: o Ancião-Raiz precisa ser **derrubado**, não empurrado; a Rainha das Areias só emerge em solo seco; o Tirano da Coroa Gélida afunda se você derreter o piso sob as 1,6 t dele; o **Arauto do Véu copia a última magia que você usou** — repetir escola é suicídio.
-- **História central em 5 atos** + missões secundárias, com progressão, XP, níveis e pontos de atributo redistribuíveis.
-- **Construção de base**: grade de 2 m, 6 tipos de peça, 4 materiais com massa/resistência/inflamabilidade/condutividade próprias — uma base toda de metal é um para-raios — e verificação de suporte estrutural com colapso em cascata.
-- **Multiplayer** por WebSocket com salas, avatares remotos interpolados a 16 Hz e eventos compartilhados.
-
----
+WebRTC via PeerJS: o broker público e gratuito faz só o handshake, o tráfego é **P2P direto entre navegadores**. Topologia em estrela com migração automática de host. O módulo é carregado por CDN sob demanda — quem joga sozinho nunca baixa esse código.
 
 ## Controles
 
-`WASD` mover · `Mouse` olhar · `Espaço` pular/planar · `Shift` correr · `1-8` magias · `Clique` conjurar · `Clique dir./F` ataque físico · `E` interagir e coletar · `B` modo construção (`Z`/`X`/`R` peça/material/girar) · **`G` Mestre do Véu** · `C` ficha · `TAB` mapa · `M` salvar
-
----
+`WASD` mover · `Mouse` olhar · `Espaço` pular/planar/voar · `Shift` correr · `1-8` magias · `Clique` conjurar · `F` corpo-a-corpo · `E` interagir · `B` construir (`Z`/`X`/`R`) · **`G` Mestre do Véu** · `C` ficha · `TAB` mapa · `M` salvar
 
 ## Estrutura
 
@@ -98,5 +122,4 @@ src/systems/  textures.js  world.js     physics.js   chardata.js
               character.js spells.js    enemies.js   gm.js
               quests.js    building.js  player.js    net.js
 src/ui/       creator.js   style.css
-server/       index.js     (WebSocket + host estático)
 ```

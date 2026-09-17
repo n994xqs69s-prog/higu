@@ -3,7 +3,7 @@ import { Textures, fbm, valueNoise, skyTexture } from './textures.js';
 
 export const WORLD_SIZE = 1200;     // metros (mundo quadrado)
 export const HALF = WORLD_SIZE / 2;
-const SEG = 300;                    // resolução da malha do terreno
+let SEG = 300;                    // resolução da malha do terreno
 
 // ---------------------------------------------------------------------------
 // Alturas: continente com montanhas ao norte, deserto a leste, pântano a sul,
@@ -58,7 +58,8 @@ export const BIOME_INFO = {
 };
 
 // ---------------------------------------------------------------------------
-export function buildWorld(scene) {
+export function buildWorld(scene, qualidade = 'alta') {
+  const Q = qualidade === 'alta' ? 1 : qualidade === 'media' ? 0.55 : 0.28;
   const colliders = [];   // {type:'box'|'sphere', ...} para física
   const interactables = [];
 
@@ -71,7 +72,7 @@ export function buildWorld(scene) {
   const sun = new THREE.DirectionalLight(0xfff0d0, 1.55);
   sun.position.set(180, 260, 120);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(Q >= 1 ? 2048 : 1024, Q >= 1 ? 2048 : 1024);
   const d = 220;
   sun.shadow.camera.left = -d; sun.shadow.camera.right = d;
   sun.shadow.camera.top = d; sun.shadow.camera.bottom = -d;
@@ -81,7 +82,8 @@ export function buildWorld(scene) {
   scene.add(sun.target);
 
   // --- Terreno ----------------------------------------------------------
-  const geo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, SEG, SEG);
+  const seg = Math.round(SEG * (Q >= 1 ? 1 : Q >= 0.5 ? 0.7 : 0.5));
+  const geo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, seg, seg);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
   const colors = new Float32Array(pos.count * 3);
@@ -119,9 +121,9 @@ export function buildWorld(scene) {
   scene.add(water);
 
   // --- Vegetação (instanciada) -----------------------------------------
-  addForest(scene, colliders);
-  addRocks(scene, colliders);
-  addCrystals(scene, colliders);
+  addForest(scene, colliders, Q);
+  addRocks(scene, colliders, Q);
+  addCrystals(scene, colliders, Q);
 
   // --- Estruturas -------------------------------------------------------
   const village = buildVillage(scene, colliders, interactables);
@@ -131,14 +133,14 @@ export function buildWorld(scene) {
   return { terrain, water, sun, colliders, interactables, village };
 }
 
-function addForest(scene, colliders) {
+function addForest(scene, colliders, Q = 1) {
   const trunkGeo = new THREE.CylinderGeometry(0.42, 0.72, 8, 6);
   const leafGeo = new THREE.IcosahedronGeometry(3.2, 0);
   const trunkMat = new THREE.MeshStandardMaterial({ map: Textures.get('bark', 2), roughness: 1 });
   const leafMat = new THREE.MeshStandardMaterial({ map: Textures.get('leaf', 1), roughness: 0.9, flatShading: true });
 
   const spots = [];
-  for (let i = 0; i < 2600; i++) {
+  for (let i = 0; i < Math.round(2600 * Q); i++) {
     const x = (Math.random() - 0.5) * WORLD_SIZE * 0.95;
     const z = (Math.random() - 0.5) * WORLD_SIZE * 0.95;
     const b = biomeAt(x, z);
@@ -164,11 +166,11 @@ function addForest(scene, colliders) {
   scene.add(trunks, leaves);
 }
 
-function addRocks(scene, colliders) {
+function addRocks(scene, colliders, Q = 1) {
   const geo = new THREE.DodecahedronGeometry(2, 0);
   const mat = new THREE.MeshStandardMaterial({ map: Textures.get('rock', 1), roughness: 1, flatShading: true });
   const list = [];
-  for (let i = 0; i < 900; i++) {
+  for (let i = 0; i < Math.round(900 * Q); i++) {
     const x = (Math.random() - 0.5) * WORLD_SIZE * 0.95;
     const z = (Math.random() - 0.5) * WORLD_SIZE * 0.95;
     const b = biomeAt(x, z);
@@ -190,14 +192,14 @@ function addRocks(scene, colliders) {
   scene.add(im);
 }
 
-function addCrystals(scene, colliders) {
+function addCrystals(scene, colliders, Q = 1) {
   const geo = new THREE.ConeGeometry(1.1, 6, 5);
   const mat = new THREE.MeshStandardMaterial({
     map: Textures.get('crystal', 1), emissive: 0x4488ff, emissiveIntensity: 0.7,
     transparent: true, opacity: 0.88, roughness: 0.15, metalness: 0.2, flatShading: true,
   });
   const list = [];
-  for (let i = 0; i < 400; i++) {
+  for (let i = 0; i < Math.round(400 * Q); i++) {
     const a = Math.random() * 6.28, r = Math.random() * 150;
     const x = 260 + Math.cos(a) * r, z = -240 + Math.sin(a) * r;
     if (biomeAt(x, z) === 'water') continue;

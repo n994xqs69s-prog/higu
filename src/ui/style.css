@@ -267,3 +267,14 @@ kbd { background: var(--panel2); border: 1px solid var(--line); border-bottom-wi
   .review, .sheet-grid { grid-template-columns: 1fr; }
   .title-wrap h1 { font-size: 58px; letter-spacing: 10px; }
 }
+
+/* ---- Seletor de elemento (Genasi) ---- */
+.elem-pick { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0 4px; align-items: center; }
+.elem-pick .elem { font-size: 10.5px; padding: 3px 10px; border-radius: 12px; border: 1px solid var(--line); background: #1a1f33; }
+.elem-pick .elem.on { background: var(--c); border-color: var(--c); color: #0a0a12; font-weight: 700; }
+.elem-pick small { flex-basis: 100%; font-size: 10.5px; color: var(--good); line-height: 1.4; }
+
+/* ---- Aviso de compatibilidade ---- */
+.compat { position: fixed; inset: 0; z-index: 99; display: flex; align-items: center; justify-content: center;
+  background: #05060c; color: var(--txt); text-align: center; padding: 30px; }
+.compat div { max-width: 460px; line-height: 1.7; }

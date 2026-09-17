@@ -18,6 +18,8 @@ import { biomeAt, heightAt, WATER_LEVEL, BIOME_INFO } from './world.js';
 import { condutividade, inflamabilidade, capacidadeCarga, velocidadeArremesso, alcanceBalistico, G } from './physics.js';
 import { ESCOLAS, MAGIAS } from './chardata.js';
 
+const RACES_ELEM = { fogo: 'fogo', agua: 'agua', terra: 'terra', ar: 'ar' };
+
 // --- Léxico -----------------------------------------------------------------
 const LEXICO = {
   fogo:    ['fogo','chama','queimar','incendi','brasa','calor','derreter','fundir','pirom','combust','fumaça','tocha','fagulha','ignição'],
@@ -287,6 +289,43 @@ export class GameMaster {
     bonus += modAtributo;
     passos.push(`Modificador do atributo relevante: ${modAtributo >= 0 ? '+' : ''}${modAtributo}.`);
     if (build.tracos.includes('memoria_total')) { bonus += 1; passos.push('✔ Memória Eidética: +1 e direito a relance.'); }
+
+    // --- Bônus por raça e classe (tags) ---------------------------------
+    const rtags = f.tags || [], ctags = f.ctags || [];
+    if (rtags.includes('engenhoso') && contem(t, ['alavanca','polia','engrenagem','pressao','pressão','mecanismo','quimic','químic','reacao','reação','parafuso','cunha','plano inclinado'])) {
+      bonus += 2; passos.push('✔ Esperteza Gnômica: mecanismos e química são sua língua nativa (+2).');
+    }
+    if (ctags.includes('erudito') && conhecimentos.length) {
+      bonus += 2; passos.push('✔ Mago: você ESTUDOU isso formalmente (+2 sobre conhecimento aplicado).');
+    }
+    if (ctags.includes('estruturas') && contem(t, ['estrutura','ponto fraco','frágil','fragil','apoio','viga','pilar','fundacao','fundação','rachadura','junta'])) {
+      bonus += 3; passos.push('✔ Ladino: você VÊ onde as coisas quebram (+3).');
+    }
+    if (rtags.includes('mimica') && contem(t, ['imito','imitar','voz','som','distra','engano','enganar','finjo','fingir','grito','chamado'])) {
+      bonus += 3; passos.push('✔ Mímica Kenku: imitação perfeita é um mecanismo legítimo (+3).');
+    }
+    if (rtags.includes('barganha') && contem(t, ['negoci','barganha','acordo','proposta','intimid','ameaco','ameaço','convenco','convenço','pacto'])) {
+      bonus += 2; passos.push('✔ Legado Infernal: barganha e intimidação contam como ação válida (+2).');
+    }
+    if (rtags.includes('voo') && contem(t, ['voo','voar','alto','acima','mergulho','planar','altitude','de cima'])) {
+      bonus += 3; passos.push('✔ Aarakocra: a dimensão vertical está realmente disponível para você (+3).');
+    }
+    if (rtags.includes('carga_dobrada') && contem(t, ['levanto','ergo','arremesso','carrego','empurro','arrasto','jogo'])) {
+      bonus += 2; passos.push('✔ Goliath: capacidade de carga DOBRADA no cálculo (+2).');
+    }
+    if (rtags.includes('construto') && contem(t, ['veneno','respirar','sufoc','afogar','fadiga','sono','dormir','doenca','doença'])) {
+      bonus += 3; passos.push('✔ Warforged: você não respira nem metaboliza — essa ameaça não se aplica a você (+3).');
+    }
+    if (rtags.includes('cai_de_pe') && contem(t, ['pulo','salto','caio','queda','despenco','desco','precipicio','precipício','penhasco'])) {
+      bonus += 3; passos.push('✔ Reflexos felinos: você não sofre dano de queda — a altura é uma rota, não um risco (+3).');
+    }
+    if (rtags.includes('sorte')) {
+      passos.push('🍀 Sorte de Halfling: se falhar, você rerrola automaticamente.');
+    }
+    if (rtags.includes('elemental') && build.elemento) {
+      const el = RACES_ELEM[build.elemento];
+      if (el && escolasCitadas.includes(el)) { bonus += 3; passos.push(`✔ Genasi: ${ESCOLAS[el].nome} é o seu elemento natal (+3).`); }
+    }
     if (modCar >= 2) { bonus += 1; passos.push(`✔ Carisma alto: benefício da dúvida +1.`); }
     bonus += Math.round(this.reputacao * 0.5);
 
@@ -295,7 +334,8 @@ export class GameMaster {
     const dc = Math.max(5, dificuldade);
     let rolagem = d20();
     let usouRelance = false;
-    if (build.tracos.includes('memoria_total') && rolagem + total < dc) {
+    const podeRelance = build.tracos.includes('memoria_total') || (f.tags || []).includes('sorte');
+    if (podeRelance && rolagem + total < dc) {
       const r2 = d20();
       if (r2 > rolagem) { rolagem = r2; usouRelance = true; }
     }

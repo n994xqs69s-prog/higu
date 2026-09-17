@@ -14,7 +14,8 @@ export function buildPadrao() {
     nome: 'Sem-Nome',
     raca: 'humano',
     origem: 'aldeao',
-    classe: 'arcanista',
+    classe: 'mago',
+    elemento: 'fogo',
     escolas: ['fogo'],
     magias: ['brasa'],
     tracos: [],
@@ -166,6 +167,9 @@ export class Creator {
             <div class="mods">${Object.entries(r.mods).map(([a, v]) => `<span class="${v > 0 ? 'p' : 'n'}">${ATTRS[a].nome} ${v > 0 ? '+' : ''}${v}</span>`).join('')}</div>
             <p class="desc">${r.desc}</p>
             <p class="passiva">⚑ ${r.passiva}</p>
+            ${r.elementos ? `<div class="elem-pick">${Object.entries(r.elementos).map(([ek, ev]) =>
+              `<button class="elem ${b.elemento === ek ? 'on' : ''}" data-elem="${ek}" style="--c:${ev.cor}">${ev.nome.replace('Genasi d','D')}</button>`).join('')}
+              <small>${r.elementos[b.elemento]?.passiva || ''}</small></div>` : ''}
             <div class="fis">
               <span title="Massa típica da raça">Massa base ${r.fis.massaBase} kg</span>
               <span>Altura ${r.altura[0]}–${r.altura[1]} m</span>
@@ -196,8 +200,9 @@ export class Creator {
         ${Object.entries(CLASSES).map(([k, c]) => `
           <div class="card ${b.classe === k ? 'sel' : ''}" data-classe="${k}">
             <h4>${c.nome}</h4>
-            <div class="mods"><span class="p">Atributo-chave: ${ATTRS[c.prim].nome}</span><span>${c.escolas} escola(s)</span></div>
+            <div class="mods"><span class="p">${ATTRS[c.prim].nome}</span><span>${c.recurso}</span><span>${c.escolas === 0 ? 'sem magia' : c.escolas + ' escola(s)'}</span></div>
             <p class="desc">${c.desc}</p>
+            <p class="passiva">⚙ ${c.mecanica}</p>
             <div class="fis"><span>Vida ×${c.vida}</span><span>Mana ×${c.mana}</span><span>Estamina ×${c.stam}</span></div>
           </div>`).join('')}
       </div>`;
@@ -239,6 +244,13 @@ export class Creator {
   abaMagia() {
     const b = this.build;
     const maxEsc = CLASSES[b.classe].escolas;
+    if (maxEsc === 0) return `
+      <h3>${CLASSES[b.classe].nome} não conjura magia</h3>
+      <p class="hint">${CLASSES[b.classe].desc}</p>
+      <p class="hint">⚙ <b>${CLASSES[b.classe].mecanica}</b></p>
+      <p class="hint">Isso não te deixa em desvantagem: o <b>Mestre do Véu (G)</b> aceita soluções puramente físicas —
+      alavanca, massa, atrito, estrutura — e a sua Força alta amplia exatamente esse tipo de argumento.
+      Enquanto um mago derruba o golem com magia, você derruba com um tronco e um ponto de apoio.</p>`;
     const disponiveis = b.escolas.flatMap(e => ESCOLAS[e].magias);
     const maxMagias = 4 + Math.floor((ATTR_BASE + b.attrs.intelecto) / 6);
     return `
@@ -358,15 +370,24 @@ export class Creator {
       b.corpo.altura = +(((r.altura[0] + r.altura[1]) / 2)).toFixed(2);
       b.corpo.massa = Math.round((r.peso[0] + r.peso[1]) / 2);
       b.cores.pele = r.cores[0];
+      if (r.elementos && !r.elementos[b.elemento]) b.elemento = Object.keys(r.elementos)[0];
       // reequilibra pontos se raça mudou limites
       R();
+    });
+    this.root.querySelectorAll('[data-elem]').forEach(el => el.onclick = ev => {
+      ev.stopPropagation(); b.elemento = el.dataset.elem; R();
     });
     this.root.querySelectorAll('[data-origem]').forEach(el => el.onclick = () => { b.origem = el.dataset.origem; R(); });
     this.root.querySelectorAll('[data-classe]').forEach(el => el.onclick = () => {
       b.classe = el.dataset.classe;
       const max = CLASSES[b.classe].escolas;
-      if (b.escolas.length > max) b.escolas = b.escolas.slice(0, max);
-      b.magias = b.magias.filter(m => b.escolas.includes(MAGIAS[m].escola));
+      if (max === 0) { b.escolas = []; b.magias = []; }
+      else {
+        if (!b.escolas.length) b.escolas = ['fogo'];
+        if (b.escolas.length > max) b.escolas = b.escolas.slice(0, max);
+        b.magias = b.magias.filter(m => b.escolas.includes(MAGIAS[m].escola));
+        if (!b.magias.length) b.magias = [ESCOLAS[b.escolas[0]].magias[0]];
+      }
       R();
     });
     this.root.querySelectorAll('[data-attr]').forEach(el => el.onclick = () => {
