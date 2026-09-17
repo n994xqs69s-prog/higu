@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HIGU — Crônicas do Véu</title>
+<link rel="stylesheet" href="/src/ui/style.css" />
+</head>
+<body>
+  <div id="app">
+    <canvas id="game"></canvas>
+
+    <!-- ============ HUD ============ -->
+    <div id="hud" class="hidden">
+      <div class="vitals">
+        <div class="bar hp"><span id="hpFill"></span><label id="hpTxt">100/100</label></div>
+        <div class="bar mp"><span id="mpFill"></span><label id="mpTxt">100/100</label></div>
+        <div class="bar st"><span id="stFill"></span><label id="stTxt">100/100</label></div>
+      </div>
+      <div id="spellbar"></div>
+      <div id="crosshair">+</div>
+      <div id="questTracker"></div>
+      <div id="log"></div>
+      <div id="compass"><span id="compassTxt">N</span></div>
+      <div id="modeTag">Modo: Combate <small>(B = construir · G = Mestre IA · TAB = mapa · C = ficha)</small></div>
+      <div id="targetInfo" class="hidden"><b id="tName"></b><div class="bar hp small"><span id="tHp"></span></div></div>
+      <div id="buildPanel" class="hidden"></div>
+      <div id="players"></div>
+    </div>
+
+    <!-- ============ TELAS ============ -->
+    <div id="screen-title" class="screen">
+      <div class="title-wrap">
+        <h1>HIGU</h1>
+        <h2>Crônicas do Véu</h2>
+        <p class="tagline">Um RPG 3D de mundo mágico aberto, física real, magia argumentável e um Mestre de Jogo com IA.</p>
+        <div class="menu">
+          <button id="btnNew" class="primary">Criar Personagem</button>
+          <button id="btnContinue">Continuar</button>
+          <button id="btnMulti">Multiplayer</button>
+          <button id="btnLore">Códice &amp; Ajuda</button>
+        </div>
+        <div class="version">build 0.1 · three.js</div>
+      </div>
+    </div>
+
+    <div id="screen-creator" class="screen hidden"></div>
+
+    <div id="screen-lore" class="screen hidden">
+      <div class="panel wide" id="loreBody"></div>
+    </div>
+
+    <div id="screen-map" class="screen hidden">
+      <div class="panel wide">
+        <h2>Mapa do Véu</h2>
+        <canvas id="mapCanvas" width="640" height="640"></canvas>
+        <div id="mapLegend"></div>
+        <button class="close" data-close="screen-map">Fechar (TAB)</button>
+      </div>
+    </div>
+
+    <div id="screen-sheet" class="screen hidden">
+      <div class="panel wide" id="sheetBody"></div>
+    </div>
+
+    <div id="screen-gm" class="screen hidden">
+      <div class="panel wide gm">
+        <h2>🜁 Mestre do Véu <small>— descreva a ação improvisada e defenda-a com argumentos</small></h2>
+        <div id="gmLog"></div>
+        <div class="gm-input">
+          <textarea id="gmText" rows="3" placeholder="Ex.: Congelo a água da cachoeira para criar uma ponte e atravesso correndo antes que o gelo quebre sob meu peso."></textarea>
+          <button id="gmSend" class="primary">Propor ação</button>
+        </div>
+        <div class="gm-hints" id="gmHints"></div>
+        <button class="close" data-close="screen-gm">Voltar ao jogo (G)</button>
+      </div>
+    </div>
+
+    <div id="screen-death" class="screen hidden">
+      <div class="panel">
+        <h2>O Véu te reclamou</h2>
+        <p id="deathTxt"></p>
+        <button id="btnRespawn" class="primary">Renascer no Santuário</button>
+      </div>
+    </div>
+
+    <div id="loading" class="screen"><div class="loader">Tecendo o Véu…<div class="lbar"><span id="lbar"></span></div></div></div>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
