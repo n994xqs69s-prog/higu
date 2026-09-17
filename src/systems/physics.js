@@ -73,7 +73,7 @@ export function resolverColisoes(body, colliders) {
 }
 
 /** Integração de um corpo. Retorna info de eventos (impacto, queda). */
-export function integrar(body, dt, colliders, { comGravidade = true } = {}) {
+export function integrar(body, dt, colliders, { comGravidade = true, gravidade = G } = {}) {
   const ev = { queda: 0, impacto: 0 };
   const alturaSolo = heightAt(body.pos.x, body.pos.z);
   body.naAgua = body.pos.y < WATER_LEVEL - 0.3 && alturaSolo < WATER_LEVEL;
@@ -82,14 +82,14 @@ export function integrar(body, dt, colliders, { comGravidade = true } = {}) {
     if (body.naAgua) {
       // Empuxo: corpo humano ~ densidade 985 kg/m³ → quase neutro.
       const volume = body.massa / 985;
-      const empuxo = AGUA_DENSIDADE * volume * -G;   // N
-      const peso = body.massa * -G;
+      const empuxo = AGUA_DENSIDADE * volume * -gravidade;   // N
+      const peso = body.massa * -gravidade;
       body.vel.y += ((empuxo - peso) / body.massa) * dt;
       body.vel.multiplyScalar(1 - Math.min(1, 2.6 * dt));   // arrasto aquático
     } else {
-      body.vel.y += G * dt;
+      body.vel.y += gravidade * dt;
       const v2 = body.vel.lengthSq();
-      if (v2 > 1) body.vel.addScaledVector(body.vel, -body.arrasto * dt * Math.sqrt(v2) / Math.sqrt(v2));
+      if (v2 > 1) body.vel.addScaledVector(body.vel, -(body.arrasto ?? 0.02) * dt);
     }
   }
 

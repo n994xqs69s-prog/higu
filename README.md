@@ -123,3 +123,80 @@ src/systems/  textures.js  world.js     physics.js   chardata.js
               quests.js    building.js  player.js    net.js
 src/ui/       creator.js   style.css
 ```
+
+---
+
+## v3 — Liberdade e escala
+
+### ⚒ Forja de Poderes — invente a sua própria magia
+
+O grimório pronto é só o começo. Em **qualquer momento do jogo** (tecla `J`) ou na
+criação de personagem (aba *Forja de Poderes*) você **escreve em português o que
+o seu poder faz** e o sistema o transforma numa magia jogável de verdade: escola,
+forma, dano, custo de mana, recarga, raio, cor e efeitos colaterais.
+
+O analisador lê o seu texto e extrai:
+
+| O que ele procura | Efeito |
+|---|---|
+| Vocabulário de 8 escolas | define escola primária e secundária |
+| 12 formas (projétil, área, cone, toque, muro, invocação, mobilidade, buff, debuff, cura, armadilha, utilidade) | define como a magia se comporta em jogo |
+| Palavras de intensidade | escala de ×0,55 a ×2,2 |
+| Conectivos causais ("porque", "de modo que") | +qualidade → mais eficiência |
+| Menções a física real (ressonância, condução, empuxo, pressão, combustão…) | +2 a +3 de qualidade cada |
+| **Limitações que você aceita** | **+25% a +40% de potência** |
+
+**Limitar o próprio poder o torna mais forte.** Custo de sangue, exigir contato,
+conjuração lenta, uso limitado, ficar imóvel, condicional, instável, drenar toda a
+mana — cada uma dá um bônus real *e é aplicada de verdade na conjuração*: se você
+escreveu que o poder te machuca, ele tira os seus PV.
+
+**Absolutos não são recusados — são convertidos.** Pedir "mato todos
+instantaneamente e sou invencível com poder infinito" não gera erro; o sistema
+traduz em dano alto, redução temporária de dano e custo baixo, com penalidade de
+potência por abuso. Você nunca bate numa parede dizendo "não pode".
+
+Máximo de 6 poderes por personagem.
+
+### 🌀 Oito planos com física própria
+
+Tecla `P` abre a viagem planar. Cada plano muda **a simulação**, não o cenário:
+
+| Plano | Gravidade | Mana | Atrito | Regra |
+|---|---|---|---|---|
+| Ardel | 22 m/s² | ×1,0 | ×1,0 | o mundo material |
+| Penumbra | 14 | ×1,4 | ×0,6 | sombra barata, fogo caro |
+| Forja | 30 | ×1,0 | ×1,5 | fogo barato, água cara |
+| Marejada | 9 | ×1,0 | ×2,6 | água barata, fogo caríssimo |
+| Verdejante | 20 | ×1,5 | ×1,0 | vida barata, sombra cara |
+| Vazio | 3 | ×2,0 | ×0,15 | dano ×1,6, custo pela metade, caos |
+| Aurora | 16 | ×1,0 | ×1,0 | vida barata, sombra cara |
+| Ossário | 24 | ×1,0 | ×1,0 | sombra barata, vida impossível |
+
+A queda livre foi validada contra `√(2h/g)`: 48 m levam 1,78 s na Forja, 2,08 s em
+Ardel e 5,73 s no Vazio. **O Mestre IA sabe em que plano você está** e ajusta o
+veredito: o mesmo salto acrobático ganha bônus no Vazio e o fogo é penalizado na
+Marejada.
+
+### 👥 648.000 habitantes
+
+Nenhum deles está na memória. Cada NPC é derivado do seu número de registro por um
+PRNG determinístico: nome e sobrenome, raça (distribuição ponderada, humanos
+maioria), profissão, idade, nível, personalidade, objetivo e um segredo. Em 30.000
+amostrados saem **26.605 nomes distintos**. Apenas os ~22 mais próximos viram
+modelos 3D; os outros existem como potencial. Tecla `N` abre o censo, com busca por
+número de registro. São 17 assentamentos espalhados por todos os planos, da capital
+Aurelian (42.000) à Âncora no Vazio (300).
+
+### ⛓ Masmorras procedurais
+
+Obeliscos rúnicos marcam 40 entradas no mundo; `E` desce, `L` sobe. Cada semente
+gera geometria 3D real — salas sem sobreposição, corredores em L, paredes sólidas
+com vãos de porta, colliders e spawns (entrada, chefe, tesouro, armadilha). Seis
+tipos: cripta, caverna, forja, santuário, covil e laboratório. Uma semente de teste
+produziu 11 salas, 339 meshes e 263 colliders. Lá dentro o Mestre muda de postura:
+ressonância nas colunas ganha bônus, relâmpago "do céu" é bloqueado.
+
+### Teclas novas
+
+`J` Forja de Poderes · `P` viagem planar · `N` censo · `L` sair da masmorra

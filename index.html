@@ -22,7 +22,7 @@
       <div id="questTracker"></div>
       <div id="log"></div>
       <div id="compass"><span id="compassTxt">N</span></div>
-      <div id="modeTag">Modo: Combate <small>(B = construir · G = Mestre IA · TAB = mapa · C = ficha)</small></div>
+      <div id="modeTag">Modo: Combate <small>(B construir · G Mestre · J Forja · P planos · N censo · L masmorra · TAB mapa · C ficha)</small></div>
       <div id="targetInfo" class="hidden"><b id="tName"></b><div class="bar hp small"><span id="tHp"></span></div></div>
       <div id="buildPanel" class="hidden"></div>
       <div id="players"></div>
@@ -75,6 +75,10 @@
         <button class="close" data-close="screen-gm">Voltar ao jogo (G)</button>
       </div>
     </div>
+
+    <div id="screen-planos" class="screen hidden"><div class="panel wide" id="planosBody"></div></div>
+    <div id="screen-censo" class="screen hidden"><div class="panel wide" id="censoBody"></div></div>
+    <div id="screen-forja" class="screen hidden"><div class="panel wide" id="forjaBody"></div></div>
 
     <div id="screen-death" class="screen hidden">
       <div class="panel">

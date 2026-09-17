@@ -17,6 +17,7 @@
 import { biomeAt, heightAt, WATER_LEVEL, BIOME_INFO } from './world.js';
 import { condutividade, inflamabilidade, capacidadeCarga, velocidadeArremesso, alcanceBalistico, G } from './physics.js';
 import { ESCOLAS, MAGIAS } from './chardata.js';
+import { DIMENSOES } from './dimensions.js';
 
 const RACES_ELEM = { fogo: 'fogo', agua: 'agua', terra: 'terra', ar: 'ar' };
 
@@ -138,6 +139,13 @@ export class GameMaster {
   }
 
   /** Avalia uma proposta em texto livre. */
+  /** Contexto físico do plano onde o jogador está — muda o veredito. */
+  contextoPlanar() {
+    const dim = this.game?.dimensao || 'ardel';
+    if (dim === 'ardel') return null;
+    return DIMENSOES[dim] || null;
+  }
+
   avaliar(textoOriginal, jogador) {
     const t = norm(textoOriginal);
     const env = this.lerAmbiente(jogador);
@@ -254,6 +262,41 @@ export class GameMaster {
       const d = parseFloat(distCitada[1]);
       if (d > 60) { dificuldade += 6; passos.push(`✘ ${d} m é longe demais para mira confiável (DC +6).`); }
       else if (d <= 25) { bonus += 1; passos.push(`✔ ${d} m está dentro do alcance eficaz: +1.`); }
+    }
+
+    // ---- 4.5 Física do plano onde você está ------------------------------
+    const plano = this.contextoPlanar();
+    if (plano) {
+      passos.push(`🌀 Você está em <b>${plano.nome}</b>: ${plano.regra}`);
+      if (/\b(pul|salt|arremess|jog|lanc|queda|cair|voa)/.test(t)) {
+        if (plano.gravidade > -12) {
+          bonus += 3;
+          passos.push(`✔ A gravidade aqui é ${Math.abs(plano.gravidade)} m/s² (contra 22 em Ardel): saltos e arremessos vão muito mais longe: +3.`);
+        } else if (plano.gravidade < -26) {
+          dificuldade += 4;
+          passos.push(`✘ Gravidade de ${Math.abs(plano.gravidade)} m/s² esmaga qualquer trajetória alta: DC +4.`);
+        }
+      }
+      if (/\b(corr|desliz|derrap|freia|empurr|arrast)/.test(t)) {
+        if (plano.atritoMult < 0.7) { dificuldade += 3; passos.push(`✘ Atrito ×${plano.atritoMult}: o chão não te dá tração para isso (DC +3).`); }
+        else if (plano.atritoMult > 2) { dificuldade += 3; passos.push(`✘ Atrito ×${plano.atritoMult}: o meio resiste a cada movimento (DC +3).`); }
+      }
+      if (plano.escolaBarata && escolasCitadas.includes(plano.escolaBarata)) {
+        bonus += 3; passos.push(`✔ ${ESCOLAS[plano.escolaBarata].nome} é a matéria-prima deste plano: +3.`);
+      }
+      if (plano.escolaCara && escolasCitadas.includes(plano.escolaCara)) {
+        dificuldade += 6; passos.push(`✘ ${ESCOLAS[plano.escolaCara].nome} é hostil a este plano: DC +6.`);
+      }
+      if (plano.caos) { passos.push(`⚠ Caos ${plano.caos}: resultados aqui são instáveis mesmo quando dão certo.`); }
+    }
+    if (this.game.masmorraAtual) {
+      passos.push(`⛓ Você está dentro de <b>${this.game.masmorraAtual.info.nome}</b> — espaço fechado, sem céu e sem recuo.`);
+      if (/\b(voa|voar|subir no ceu|escala o ceu|relampago do ceu|chuva|vento forte)/.test(t)) {
+        dificuldade += 7; passos.push('✘ Não há céu aqui embaixo para isso funcionar: DC +7.');
+      }
+      if (/\b(eco|ressona|som|grito|vibra|desab|teto|coluna|pilar)/.test(t)) {
+        bonus += 2; passos.push('✔ Paredes de pedra fechadas amplificam som e vibração: +2.');
+      }
     }
 
     // ---- 5. Qualidade do argumento --------------------------------------

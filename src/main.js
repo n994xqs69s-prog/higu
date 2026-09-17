@@ -1,16 +1,22 @@
 import * as THREE from 'three';
+import { skyTexture } from './systems/textures.js';
 import { buildWorld, heightAt, biomeAt, BIOME_INFO, WORLD_SIZE, HALF, WATER_LEVEL } from './systems/world.js';
 import { Player } from './systems/player.js';
 import { Enemy, BESTIARIO, CHEFES } from './systems/enemies.js';
+import { Textures } from './systems/textures.js';
 import { SpellSystem } from './systems/spells.js';
 import { GameMaster } from './systems/gm.js';
 import { QuestSystem, MISSOES, PROLOGO } from './systems/quests.js';
 import { BuildSystem, MATERIAIS, PECAS } from './systems/building.js';
 import { Creator, buildPadrao } from './ui/creator.js';
 import { MAGIAS, ESCOLAS, RACES, CLASSES, ORIGENS, TRACOS, ATTRS } from './systems/chardata.js';
-import { computarFicha, xpParaNivel } from './systems/character.js';
+import { computarFicha, xpParaNivel, buildAvatar as buildAvatarNPC } from './systems/character.js';
 import { raycastTerreno, temLinhaDeVisao } from './systems/physics.js';
 import { Net } from './systems/net.js';
+import { DIMENSOES, ORDEM_DIMENSOES, custoNoPlano } from './systems/dimensions.js';
+import { npcPorId, npcsProximos, censo, ASSENTAMENTOS, TOTAL_NPCS } from './systems/population.js';
+import { gerarMasmorra, descreverMasmorra, masmorrasDoMundo } from './systems/dungeons.js';
+import { analisarPoder, forjarMagia, dicasDoPoder } from './systems/forge.js';
 
 const $ = s => document.querySelector(s);
 const SAVE_KEY = 'higu_save_v1';
@@ -49,6 +55,11 @@ class Game {
     this.camYaw = 0; this.camPitch = -0.2; this.camDist = 6.5;
     this.input = { frente: 0, tras: 0, esq: 0, dir: 0, pular: 0, correr: 0 };
     this.logs = [];
+    this.dimensao = 'ardel';
+    this.npcsAtivos = new Map();
+    this.invocacoes = [];
+    this.masmorraAtual = null;
+    this.masmorras = [];
 
     addEventListener('resize', () => this.onResize());
     this.onResize();
@@ -69,6 +80,8 @@ class Game {
     this.quests = new QuestSystem(this);
     this.builder = new BuildSystem(this.scene, this);
     this.veilOrb = this.scene.getObjectByName('veilOrb');
+    this.masmorras = masmorrasDoMundo(40);
+    this.marcarMasmorras();
   }
 
   criarJogador(build) {
@@ -79,6 +92,63 @@ class Game {
     this.atualizarSpellbar();
     this.log(PROLOGO.split('\n\n')[0], 'lore');
     this.log('Pressione G para falar com o Mestre do Véu a qualquer momento.', 'dica');
+  }
+
+  marcarMasmorras() {
+    const geo = new THREE.ConeGeometry(2.2, 5, 6);
+    for (const d of this.masmorras) {
+      const mat = new THREE.MeshStandardMaterial({
+        map: Textures.get('runes', 1), color: 0x2a2a3a,
+        emissive: new THREE.Color(d.def.luz), emissiveIntensity: 0.9,
+      });
+      const marco = new THREE.Mesh(geo, mat);
+      marco.position.set(d.x, d.y + 2.2, d.z);
+      marco.castShadow = true;
+      this.scene.add(marco);
+      const l = new THREE.PointLight(d.def.luz, 14, 22, 2);
+      l.position.set(d.x, d.y + 4, d.z);
+      this.scene.add(l);
+      this.colliders.push({ type: 'cyl', x: d.x, z: d.z, r: 2.4, y: d.y, h: 5, tag: 'masmorra' });
+      this.interactables.push({ id: 'masmorra_' + d.seed, x: d.x, z: d.z, y: d.y, r: 7,
+        label: `${d.nome} (E: entrar)`, kind: 'masmorra', dados: d });
+    }
+  }
+
+  entrarNaMasmorra(d) {
+    if (this.masmorraAtual) return;
+    const base = new THREE.Vector3(d.x, d.y - 300, d.z);
+    const M = gerarMasmorra(d.seed, this.scene, base);
+    this.masmorraAtual = { ...M, retorno: this.player.body.pos.clone() };
+    this.colliders.push(...M.colliders);
+    const entrada = M.spawns.find(s => s.tipo === 'entrada') || { x: base.x, y: base.y, z: base.z };
+    this.player.body.pos.set(entrada.x, entrada.y + 1, entrada.z);
+    this.player.body.vel.set(0, 0, 0);
+    for (const s of M.spawns) {
+      if (s.tipo === 'inimigo' || s.tipo === 'chefe') {
+        const e = new Enemy(s.inimigo, new THREE.Vector3(s.x, s.y, s.z), this.scene, s.tipo === 'chefe');
+        e.emMasmorra = true;
+        if (s.tipo === 'chefe') { e.vida *= 1.5; e.ficha.vidaMax *= 1.5; }
+        this.inimigos.push(e);
+      }
+    }
+    this.log(`⛓ Você desce em <b>${M.info.nome}</b> — ${M.info.def.nome}, nível ${M.info.nivel} (${M.info.dificuldade}).`, 'boss');
+    this.log(M.info.def.desc, 'lore');
+    this.log(`${M.salas.length} salas${M.info.temChefe ? ' · há um chefe lá dentro' : ''}. Pressione L para sair.`, 'dica');
+  }
+
+  sairDaMasmorra() {
+    const M = this.masmorraAtual;
+    if (!M) return;
+    this.scene.remove(M.grupo);
+    this.colliders = this.colliders.filter(c => !M.colliders.includes(c));
+    this.inimigos = this.inimigos.filter(e => {
+      if (e.emMasmorra) { this.scene.remove(e.mesh); return false; }
+      return true;
+    });
+    this.player.body.pos.copy(M.retorno);
+    this.player.body.pos.y = heightAt(M.retorno.x, M.retorno.z) + 1;
+    this.masmorraAtual = null;
+    this.log('Você emerge à superfície.', 'dica');
   }
 
   spawnInimigos() {
@@ -250,6 +320,25 @@ class Game {
     el.innerHTML = this.logs.map(l => `<div class="l ${l.tipo}">${l.msg}</div>`).join('');
   }
 
+  /** Definição de magia: catálogo oficial OU poder forjado pelo jogador. */
+  magiaDef(id) {
+    return MAGIAS[id] || this.player?.poderes?.find(p => p.id === id) || null;
+  }
+
+  /** Invoca um servo temporário (poderes de forma 'invocação'). */
+  invocar(dono, pos, dano, escola, cor) {
+    const g = new THREE.Group();
+    const corpo = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6, 1),
+      new THREE.MeshStandardMaterial({ color: cor, emissive: cor, emissiveIntensity: 1.4, transparent: true, opacity: 0.8 }));
+    corpo.position.y = 1;
+    g.add(corpo, new THREE.PointLight(cor, 8, 10, 2).translateY(1));
+    pos.y = heightAt(pos.x, pos.z);
+    g.position.copy(pos);
+    this.scene.add(g);
+    this.invocacoes.push({ mesh: g, dono, dano, escola, vida: 24, t: 0, dur: 22, cd: 0 });
+    this.log('Uma criatura responde ao seu chamado.', 'dica');
+  }
+
   dirMira() {
     const d = new THREE.Vector3();
     this.camera.getWorldDirection(d);
@@ -282,6 +371,8 @@ class Game {
 
   interagir() {
     const p = this.player;
+    const npc = this.npcMaisProximo(5);
+    if (npc) { this.falarCom(npc); return true; }
     for (const it of this.interactables) {
       if (Math.hypot(p.body.pos.x - it.x, p.body.pos.z - it.z) > it.r) continue;
       if (it.kind === 'mana') {
@@ -289,6 +380,9 @@ class Game {
         this.log('A Fonte de Mana te preenche. A runa na sua palma responde e brilha.', 'lore');
       } else if (it.kind === 'altar') {
         this.log('A pedra grava-se sozinha: "O Véu não nos protege. Ele o PRENDE."', 'lore');
+      } else if (it.kind === 'masmorra') {
+        this.entrarNaMasmorra(it.dados);
+        return true;
       } else if (it.kind === 'boss') {
         this.log('A Torre do Véu se abre. O Arauto sabe o seu nome.', 'boss');
       }
@@ -347,6 +441,8 @@ class Game {
     const nightC = new THREE.Color(0x0a1028), dayC = new THREE.Color(0x9fb6da);
     this.scene.fog.color.copy(nightC).lerp(dayC, THREE.MathUtils.clamp(luz, 0, 1));
 
+    const dimDef = DIMENSOES[this.dimensao];
+    this.gravidadeAtual = dimDef.gravidade;
     const info = p.update(dt, this.input, this, this.dirMira());
 
     for (const e of this.inimigos) e.update(dt, this);
@@ -362,6 +458,9 @@ class Game {
         this.estruturasTemp.splice(i, 1);
       }
     }
+
+    this.atualizarInvocacoes(dt);
+    this.atualizarNPCs();
 
     if (this.veilOrb) { this.veilOrb.rotation.y += dt * 0.4; this.veilOrb.rotation.x += dt * 0.2; }
     if (this.water) this.water.material.opacity = 0.68 + Math.sin(performance.now() * 0.0008) * 0.05;
@@ -391,6 +490,108 @@ class Game {
     this.atualizarHUD(info);
   }
 
+  atualizarInvocacoes(dt) {
+    for (let i = this.invocacoes.length - 1; i >= 0; i--) {
+      const inv = this.invocacoes[i];
+      inv.t += dt; inv.cd -= dt;
+      inv.mesh.rotation.y += dt * 2;
+      inv.mesh.children[0].position.y = 1 + Math.sin(inv.t * 3) * 0.2;
+      let alvo = null, melhor = 26;
+      for (const e of this.alvosDe(inv.dono)) {
+        const d = e.body.pos.distanceTo(inv.mesh.position);
+        if (d < melhor) { melhor = d; alvo = e; }
+      }
+      if (alvo) {
+        const dir = alvo.body.pos.clone().sub(inv.mesh.position).setY(0).normalize();
+        inv.mesh.position.addScaledVector(dir, dt * 7);
+        inv.mesh.position.y = heightAt(inv.mesh.position.x, inv.mesh.position.z);
+        if (melhor < 2.6 && inv.cd <= 0) {
+          this.aplicarDano(alvo, inv.dano * 0.4, inv.dono, inv.escola);
+          inv.cd = 1.1;
+        }
+      }
+      if (inv.t > inv.dur || inv.vida <= 0) { this.scene.remove(inv.mesh); this.invocacoes.splice(i, 1); }
+    }
+  }
+
+  /** Materializa apenas os NPCs próximos; os outros 600 mil ficam latentes. */
+  atualizarNPCs() {
+    const p = this.player.body.pos;
+    const agora = performance.now();
+    if (agora - (this._npcT || 0) < 900) return;
+    this._npcT = agora;
+    const perto = npcsProximos(p.x, p.z, this.dimensao, 75, 22);
+    const ids = new Set(perto.map(n => n.id));
+    for (const [id, o] of this.npcsAtivos) {
+      if (!ids.has(id)) { this.scene.remove(o.mesh); this.npcsAtivos.delete(id); }
+    }
+    for (const n of perto) {
+      if (this.npcsAtivos.has(n.id)) continue;
+      const build = {
+        raca: n.raca, classe: 'guerreiro', escolas: ['terra'], magias: [], tracos: [], poderes: [],
+        corpo: { altura: (RACES[n.raca].altura[0] + RACES[n.raca].altura[1]) / 2,
+                 massa: (RACES[n.raca].peso[0] + RACES[n.raca].peso[1]) / 2, musculo: 50, ombros: 50 },
+        cores: { pele: RACES[n.raca].cores[n.id % RACES[n.raca].cores.length],
+                 cabelo: '#3a2a1a', olhos: '#6a8ab0', roupa: ['#5a4a3a','#3a4a5a','#4a3a4a','#5a5a3a'][n.id % 4] },
+        attrs: { forca: 0, destreza: 0, vigor: 0, intelecto: 0, espirito: 0, carisma: 0 },
+      };
+      let mesh;
+      try { mesh = buildAvatarNPC(build); } catch { continue; }
+      mesh.position.set(n.x, heightAt(n.x, n.z), n.z);
+      mesh.rotation.y = (n.id % 628) / 100;
+      this.scene.add(mesh);
+      this.npcsAtivos.set(n.id, { npc: n, mesh });
+    }
+  }
+
+  npcMaisProximo(raio = 4.5) {
+    const p = this.player.body.pos;
+    let melhor = null, d = raio;
+    for (const o of this.npcsAtivos.values()) {
+      const dd = o.mesh.position.distanceTo(p);
+      if (dd < d) { d = dd; melhor = o; }
+    }
+    return melhor;
+  }
+
+  falarCom(o) {
+    const n = o.npc;
+    this.log(`🗣 <b>${n.nome}</b> (${n.racaNome}, ${n.profissao}, ${n.idade} anos — ${n.lar})`, 'lore');
+    this.log(`"${n.fala}"`, 'lore');
+    const extras = [
+      `Parece ${n.personalidade}. Quer ${n.objetivo}.`,
+      n.dadorDeMissao ? '📜 Tem trabalho para oferecer.' : null,
+      n.comerciante ? '💰 Vende mercadorias.' : null,
+      n.curandeiro ? '✚ Pode tratar ferimentos (E de novo).' : null,
+    ].filter(Boolean);
+    extras.forEach(e => this.log(e, 'dica'));
+    if (n.curandeiro && this.player.vida < this.player.ficha.vidaMax) {
+      this.player.vida = Math.min(this.player.ficha.vidaMax, this.player.vida + this.player.ficha.vidaMax * 0.35);
+      this.log('Você é tratado e recupera vida.', 'quest');
+    }
+    if (n.dadorDeMissao) {
+      this.builder.recursos.madeira += 20; this.builder.recursos.pedra += 12;
+      this.log(`${n.nome} te paga com materiais pelo serviço.`, 'quest');
+    }
+  }
+
+  // ---- Dimensões ---------------------------------------------------------
+  viajarPara(dim) {
+    if (!DIMENSOES[dim] || dim === this.dimensao) return;
+    const d = DIMENSOES[dim];
+    this.dimensao = dim;
+    for (const [id, o] of this.npcsAtivos) this.scene.remove(o.mesh);
+    this.npcsAtivos.clear();
+    this.scene.background = skyTexture(d.ceu[0], d.ceu[1]);
+    this.scene.fog.color.setHex(d.neblina);
+    this.scene.fog.density = d.densidadeNeblina;
+    this.sun.intensity = d.luz;
+    this.spells.explosaoVisual(this.player.body.pos.clone().setY(this.player.body.pos.y + 1), d.cor, 4);
+    this.log(`🌀 Você atravessa para <b>${d.nome}</b>.`, 'boss');
+    this.log(d.regra, 'lore');
+    this._planoAnterior = this._planoAnterior || 'ardel';
+  }
+
   atualizarHUD(info) {
     const p = this.player, f = p.ficha;
     const pct = (a, b) => Math.max(0, Math.min(100, (a / b) * 100)) + '%';
@@ -406,8 +607,10 @@ class Game {
       const id = p.magias[i];
       if (!id) return;
       el.classList.toggle('on', i === p.magiaAtiva);
+      const def = this.magiaDef(id);
+      if (!def) return;
       const cd = p.cooldowns[id] || 0;
-      el.querySelector('.cd').style.height = (cd / MAGIAS[id].cd * 100) + '%';
+      el.querySelector('.cd').style.height = (cd / def.cd * 100) + '%';
       const custo = this.spells.custoAjustado(id, p);
       el.querySelector('.cost').textContent = custo;
       el.classList.toggle('nomana', p.mana < custo);
@@ -417,7 +620,10 @@ class Game {
     const deg = ((-this.camYaw * 180 / Math.PI) % 360 + 360) % 360;
     const dirs = ['N', 'NE', 'L', 'SE', 'S', 'SO', 'O', 'NO'];
     const b = biomeAt(p.body.pos.x, p.body.pos.z);
-    $('#compassTxt').innerHTML = `${dirs[Math.round(deg / 45) % 8]} · <b>${BIOME_INFO[b].nome}</b> <small>mana ×${BIOME_INFO[b].mana}</small>`;
+    const dd = DIMENSOES[this.dimensao];
+    $('#compassTxt').innerHTML = this.dimensao === 'ardel'
+      ? `${dirs[Math.round(deg / 45) % 8]} · <b>${BIOME_INFO[b].nome}</b> <small>mana ×${BIOME_INFO[b].mana}</small>`
+      : `${dirs[Math.round(deg / 45) % 8]} · <b style="color:${dd.cor}">${dd.nome}</b> <small>g ${Math.abs(dd.gravidade)} · mana ×${dd.manaMult}</small>`;
 
     // quest tracker
     const ativas = this.quests.ativas().slice(0, 3);
@@ -459,8 +665,9 @@ class Game {
   atualizarSpellbar() {
     const bar = $('#spellbar');
     bar.innerHTML = this.player.magias.slice(0, 8).map((id, i) => {
-      const m = MAGIAS[id];
-      return `<div class="slot" data-slot="${i}" style="--c:${ESCOLAS[m.escola].cor}">
+      const m = this.magiaDef(id);
+      if (!m) return '';
+      return `<div class="slot ${m.custom ? 'custom' : ''}" data-slot="${i}" style="--c:${m.cor || ESCOLAS[m.escola].cor}">
         <span class="key">${i + 1}</span><span class="cd"></span>
         <span class="nm">${m.nome}</span><span class="cost">${m.custo}</span>
       </div>`;
@@ -647,6 +854,10 @@ addEventListener('keydown', e => {
     case 'KeyG': abrirGM(); break;
     case 'KeyC': abrirFicha(); break;
     case 'KeyM': game.salvar(); break;
+    case 'KeyL': game.masmorraAtual ? game.sairDaMasmorra() : game.log('Você não está numa masmorra.', 'aviso'); break;
+    case 'KeyP': abrirPlanos(); break;
+    case 'KeyN': abrirCenso(); break;
+    case 'KeyJ': abrirForja(); break;
     case 'Tab': e.preventDefault(); abrirMapa(); break;
     case 'Escape': document.exitPointerLock?.(); break;
   }
@@ -864,6 +1075,163 @@ function renderLore() {
     ${Object.values(CHEFES).map(b => `<div class="lore-boss"><b>${b.nome}</b> <small>${b.vida} HP · ${b.massa} kg${b.fraqueza ? ` · fraco a ${ESCOLAS[b.fraqueza].nome}` : ' · sem fraqueza conhecida'}</small>
       <p>${b.desc}</p><ul>${b.fases.map(f => `<li>${f}</li>`).join('')}</ul></div>`).join('')}
     <button class="close" onclick="document.querySelector('#screen-lore').classList.add('hidden');document.querySelector('#screen-title').classList.remove('hidden')">Voltar</button>`;
+}
+
+// --- Viagem entre planos ----------------------------------------------------
+function abrirPlanos() {
+  const s = $('#screen-planos');
+  if (!s.classList.contains('hidden')) { s.classList.add('hidden'); if (game.rodando) game.canvas.requestPointerLock(); return; }
+  document.exitPointerLock?.();
+  $('#planosBody').innerHTML = `
+    <h2>Planos do Véu <small>— cada um tem física própria</small></h2>
+    <p class="hint">Você está em <b style="color:${DIMENSOES[game.dimensao].cor}">${DIMENSOES[game.dimensao].nome}</b>.
+    Trocar de plano muda gravidade, densidade de mana, atrito e luz de verdade — não é só cenário.</p>
+    <div class="grid cards small">
+      ${ORDEM_DIMENSOES.map(k => {
+        const d = DIMENSOES[k];
+        return `<div class="card ${game.dimensao === k ? 'sel' : ''}" data-dim="${k}" style="--c:${d.cor}">
+          <h4><i style="background:${d.cor}"></i> ${d.nome}</h4>
+          <div class="mods">
+            <span>gravidade ${Math.abs(d.gravidade)} m/s²</span>
+            <span>mana ×${d.manaMult}</span>
+            <span>atrito ×${d.atritoMult}</span>
+            <span>luz ×${d.luz}</span>
+          </div>
+          <p class="desc">${d.desc}</p>
+          <p class="passiva">⚖ ${d.regra}</p>
+          <p class="desc" style="opacity:.7">🚪 ${d.acesso}</p>
+        </div>`;
+      }).join('')}
+    </div>
+    <button class="close" data-fechar="screen-planos">Fechar (P)</button>`;
+  s.querySelectorAll('[data-dim]').forEach(el => el.onclick = () => {
+    game.viajarPara(el.dataset.dim);
+    s.classList.add('hidden');
+    if (game.rodando) game.canvas.requestPointerLock();
+  });
+  s.querySelector('[data-fechar]').onclick = () => { s.classList.add('hidden'); if (game.rodando) game.canvas.requestPointerLock(); };
+  s.classList.remove('hidden');
+}
+
+// --- Censo de NPCs ----------------------------------------------------------
+let censoCache = null;
+function abrirCenso() {
+  const s = $('#screen-censo');
+  if (!s.classList.contains('hidden')) { s.classList.add('hidden'); if (game.rodando) game.canvas.requestPointerLock(); return; }
+  document.exitPointerLock?.();
+  censoCache = censoCache || censo();
+  const c = censoCache;
+  const perto = [...game.npcsAtivos.values()].map(o => o.npc);
+  $('#censoBody').innerHTML = `
+    <h2>Censo do Véu</h2>
+    <p class="hint">Existem <b>${c.total.toLocaleString('pt-BR')}</b> pessoas em todos os planos. Cada uma tem nome,
+    raça, profissão, idade, personalidade, um objetivo e um segredo — gerados de forma determinística a partir
+    do seu número de registro. Só quem está perto de você é renderizado; o resto existe como potencial.</p>
+    <div class="sheet-grid">
+      <div>
+        <h4>Por raça</h4>
+        ${c.porRaca.slice(0, 18).map(([k, v]) => `<div class="sh-attr"><span>${k}</span><b>${v.toLocaleString('pt-BR')}</b></div>`).join('')}
+      </div>
+      <div>
+        <h4>Por profissão</h4>
+        ${c.porProf.slice(0, 16).map(([k, v]) => `<div class="sh-attr"><span>${k}</span><b>${v.toLocaleString('pt-BR')}</b></div>`).join('')}
+      </div>
+      <div>
+        <h4>Assentamentos</h4>
+        ${c.assentamentos.map(a => `<div class="sh-attr"><span>${a.nome} <small style="opacity:.6">${DIMENSOES[a.dim || 'ardel'].nome.split(' ')[0]}</small></span><b>${a.pop.toLocaleString('pt-BR')}</b></div>`).join('')}
+        <h4>Ao seu redor agora (${perto.length})</h4>
+        ${perto.length ? perto.slice(0, 8).map(n => `<div class="sh-q ativa"><b>${n.nome}</b> <i>${n.profissao}</i>
+          <p>${n.racaNome}, ${n.idade} anos · ${n.personalidade}<br>Quer ${n.objetivo}.<br><small style="opacity:.6">Segredo: ${n.segredo}</small></p></div>`).join('')
+          : '<p class="hint">Ninguém por perto. Vá até um assentamento.</p>'}
+      </div>
+    </div>
+    <h4>Consultar registro por número</h4>
+    <div class="gm-input"><input type="number" id="censoId" min="0" max="${c.total - 1}" placeholder="0 – ${c.total - 1}" style="flex:1;background:#141828;color:var(--txt);border:1px solid var(--line);border-radius:9px;padding:11px 14px;font:inherit">
+      <button id="censoBusca" class="primary">Buscar</button></div>
+    <div id="censoRes"></div>
+    <button class="close" data-fechar="screen-censo">Fechar (N)</button>`;
+  const busca = () => {
+    const id = Math.max(0, Math.min(c.total - 1, +$('#censoId').value || 0));
+    const n = npcPorId(id);
+    $('#censoRes').innerHTML = `<div class="sh-q ativa"><b>#${id} — ${n.nome}</b> <i>${n.profissao}</i>
+      <p>${n.racaNome}, ${n.idade} anos, nível ${n.nivel} · mora em <b>${n.lar}</b> (${DIMENSOES[n.dim].nome})</p>
+      <p>Personalidade: ${n.personalidade}. Quer ${n.objetivo}.</p>
+      <p>Segredo: ${n.segredo}</p><p>"${n.fala}"</p></div>`;
+  };
+  $('#censoBusca').onclick = busca;
+  $('#censoId').onkeydown = e => { if (e.code === 'Enter') busca(); };
+  s.querySelector('[data-fechar]').onclick = () => { s.classList.add('hidden'); if (game.rodando) game.canvas.requestPointerLock(); };
+  s.classList.remove('hidden');
+}
+
+// --- Forja em jogo ----------------------------------------------------------
+function abrirForja() {
+  const s = $('#screen-forja');
+  if (!s.classList.contains('hidden')) { s.classList.add('hidden'); if (game.rodando) game.canvas.requestPointerLock(); return; }
+  document.exitPointerLock?.();
+  renderForjaJogo();
+  s.classList.remove('hidden');
+}
+
+let previaJogo = null;
+function renderForjaJogo() {
+  const p = game.player;
+  $('#forjaBody').innerHTML = `
+    <h2>⚒ Forja de Poderes <small>— invente um poder novo a qualquer momento</small></h2>
+    <p class="hint">Descreva um poder e ele vira magia jogável na sua barra. Explique o mecanismo
+    ("porque", "de modo que"), cite física real e aceite limitações para ganhar potência.</p>
+    <div class="gm-input" style="flex-direction:column;align-items:stretch;gap:8px">
+      <input type="text" id="fgNome" placeholder="Nome do poder" maxlength="34"
+        style="background:#141828;color:var(--txt);border:1px solid var(--line);border-radius:9px;padding:11px 14px;font:inherit">
+      <textarea id="fgTexto" rows="5" placeholder="Descreva o que acontece quando você usa..."></textarea>
+      <div style="display:flex;gap:10px"><button id="fgAnalisar">🔍 Analisar</button>
+        <button id="fgCriar" class="primary" ${previaJogo ? '' : 'disabled'}>⚒ Forjar (custa 1 nível de poder)</button></div>
+    </div>
+    <div id="fgOut">${previaJogo ? cardPrevia(previaJogo) : ''}</div>
+    <h4>Seus poderes (${p.poderes.length}/6)</h4>
+    ${p.poderes.map(x => `<div class="sh-sp" style="--c:${x.cor}"><b>${x.nome}</b>
+      <span>${ESCOLAS[x.escola].nome} · ${x.formaNome} · ${x.custo} mana · ${x.dano < 0 ? '+' + Math.abs(x.dano) + ' PV' : x.dano + ' dano'} · ${x.cd}s</span>
+      <p>${x.desc}</p></div>`).join('') || '<p class="hint">Nenhum ainda.</p>'}
+    <button class="close" data-fechar="screen-forja">Fechar (J)</button>`;
+
+  const analisar = () => {
+    const txt = $('#fgTexto').value.trim();
+    if (!txt) return;
+    previaJogo = analisarPoder(txt, p.ficha, p.build);
+    previaJogo._nome = $('#fgNome').value.trim() || 'Poder Inominado';
+    previaJogo._texto = txt;
+    renderForjaJogo();
+  };
+  $('#fgAnalisar').onclick = analisar;
+  $('#fgCriar').onclick = () => {
+    if (!previaJogo || p.poderes.length >= 6) return;
+    const id = 'custom_' + Date.now().toString(36);
+    const mg = forjarMagia(id, previaJogo._nome, previaJogo._texto, previaJogo);
+    p.poderes.push(mg); p.build.poderes = p.poderes;
+    p.magias.push(id);
+    game.atualizarSpellbar();
+    game.log(`⚒ Poder forjado: <b>${mg.nome}</b> — já está na sua barra.`, 'quest');
+    previaJogo = null;
+    renderForjaJogo();
+  };
+  $('#screen-forja').querySelector('[data-fechar]').onclick = () => {
+    $('#screen-forja').classList.add('hidden'); if (game.rodando) game.canvas.requestPointerLock();
+  };
+}
+
+function cardPrevia(a) {
+  return `<div class="fj-card" style="--c:${a.cor}">
+    <h4>${a._nome}</h4>
+    <div class="fj-tags"><span style="background:${a.cor}">${ESCOLAS[a.escola].nome}</span>
+      ${a.escolaSec ? `<span style="background:${ESCOLAS[a.escolaSec].cor}">${ESCOLAS[a.escolaSec].nome}</span>` : ''}
+      <span class="neutro">${a.formaNome}</span><span class="neutro">${a.intensNome}</span></div>
+    <div class="fj-nums">
+      <div><label>Custo</label><b>${a.custo}</b><small>mana</small></div>
+      <div><label>${a.dano < 0 ? 'Cura' : 'Dano'}</label><b>${Math.abs(a.dano)}</b><small>pts</small></div>
+      <div><label>Recarga</label><b>${a.cd}</b><small>seg</small></div>
+      ${a.raio ? `<div><label>Raio</label><b>${a.raio}</b><small>m</small></div>` : ''}</div>
+    <div class="fj-rel"><b>Leitura da Forja:</b>${a.relatorio.map(l => `<div>${l}</div>`).join('')}</div>
+    <div class="fj-dicas"><b>Para melhorar:</b> ${dicasDoPoder(a).join(' ')}</div></div>`;
 }
 
 boot();

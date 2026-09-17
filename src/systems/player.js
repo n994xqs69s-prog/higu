@@ -29,7 +29,8 @@ export class Player {
     this.mesh.position.copy(pos);
     scene.add(this.mesh);
     this.nome = build.nome;
-    this.magias = [...build.magias];
+    this.magias = [...(build.magias || []), ...((build.poderes || []).map(x => x.id))];
+    this.poderes = build.poderes || [];
     this.magiaAtiva = 0;
     this.nivel = build.nivel || 1;
     this.xp = build.xp || 0;
@@ -110,7 +111,7 @@ export class Player {
       }
     }
 
-    const ev = integrar(this.body, dt, game.colliders);
+    const ev = integrar(this.body, dt, game.colliders, { gravidade: game.gravidadeAtual ?? -22 });
     if (ev.queda > 0) {
       let d = ev.queda * (f.quedaMult ?? 1);
       if (d > 1) {

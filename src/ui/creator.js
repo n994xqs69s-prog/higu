@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RACES, ORIGENS, CLASSES, ESCOLAS, MAGIAS, TRACOS, ATTRS, CORPO, PONTOS_INICIAIS, ATTR_BASE } from '../systems/chardata.js';
+import { analisarPoder, forjarMagia, dicasDoPoder } from '../systems/forge.js';
 import { buildAvatar, animarAvatar, computarFicha } from '../systems/character.js';
 import { Textures, skyTexture } from '../systems/textures.js';
 import { capacidadeCarga, velocidadeArremesso, alcanceBalistico } from '../systems/physics.js';
@@ -24,6 +25,7 @@ export function buildPadrao() {
     cores: { pele: '#d9a066', cabelo: '#2b1b12', olhos: '#4aa3ff', roupa: '#3a4a7a' },
     nivel: 1, xp: 0, pontosLivres: 0,
     biografia: '',
+    poderes: [],
   };
 }
 
@@ -33,7 +35,7 @@ export class Creator {
     this.onDone = onDone;
     this.build = buildPadrao();
     this.aba = 0;
-    this.abas = ['Raça', 'Origem & Classe', 'Atributos', 'Magia', 'Corpo & Aparência', 'Revisão'];
+    this.abas = ['Raça', 'Origem & Classe', 'Atributos', 'Magia', 'Forja de Poderes', 'Corpo & Aparência', 'Revisão'];
     this.setupPreview();
     this.render();
   }
@@ -150,7 +152,7 @@ export class Creator {
     const el = this.root.querySelector('#crBody');
     el.innerHTML = [
       () => this.abaRaca(), () => this.abaOrigem(), () => this.abaAttrs(),
-      () => this.abaMagia(), () => this.abaCorpo(), () => this.abaRevisao(),
+      () => this.abaMagia(), () => this.abaForja(), () => this.abaCorpo(), () => this.abaRevisao(),
     ][this.aba]();
     this.bind();
   }
@@ -276,6 +278,75 @@ export class Creator {
       </div>`;
   }
 
+
+  abaForja() {
+    const b = this.build;
+    const a = this.previaPoder;
+    return `
+      <h3>Forja de Poderes <small>— invente os seus, não escolha de uma lista</small></h3>
+      <p class="hint">Escreva o poder que você <b>imaginou</b>. A Forja lê a sua descrição e a converte
+      numa magia jogável de verdade: elemento, forma, dano, custo e recarga saem do que você escreveu.
+      Não existe catálogo fechado — se você consegue descrever, o Véu consegue manifestar.</p>
+      <p class="hint">
+        <b>Quanto melhor a descrição, melhor o poder:</b> explique o mecanismo com "porque" / "de modo que",
+        cite física real (pressão, temperatura, condutividade, massa, ressonância, atrito, óptica) e
+        <b>aceite uma limitação</b> ("me machuca", "preciso tocar", "demora a carregar", "fico imóvel") —
+        limitações aumentam muito a potência.
+      </p>
+
+      <div class="forja">
+        <div class="forja-in">
+          <label>Nome do poder</label>
+          <input type="text" id="fjNome" maxlength="34" placeholder="Ex.: Sopro do Inverno Faminto" value="${(this.poderNome || '').replace(/"/g, '&quot;')}">
+          <label>Descreva o que acontece</label>
+          <textarea id="fjTexto" rows="7" placeholder="Ex.: Eu prendo a respiração e puxo todo o calor do ar à minha frente, de modo que a umidade congela instantaneamente num cone de lâminas de gelo. Como estou roubando energia térmica do meu próprio corpo para isso, minhas mãos racham e eu perco vida a cada uso.">${(this.poderTexto || '')}</textarea>
+          <div class="forja-btns">
+            <button id="fjAnalisar">🔍 Analisar</button>
+            <button id="fjCriar" class="primary" ${a ? '' : 'disabled'}>⚒ Forjar poder</button>
+          </div>
+          <div class="forja-ex">
+            <b>Exemplos para inspirar:</b>
+            ${[
+              'Invoco uma matilha de lobos de fumaça que perseguem pelo cheiro; some se chover.',
+              'Transformo meu sangue em espinhos de ferro que disparo — cada disparo me fere.',
+              'Grito numa frequência que faz a pedra ressoar até rachar, porque encontro a frequência natural do material.',
+              'Marco o chão com uma runa que inverte a gravidade de quem pisar nela.',
+            ].map(e => `<span class="ex" data-ex="${e.replace(/"/g, '&quot;')}">${e}</span>`).join('')}
+          </div>
+        </div>
+
+        <div class="forja-out">
+          ${a ? `
+            <div class="fj-card" style="--c:${a.cor}">
+              <h4>${this.poderNome || 'Poder sem nome'}</h4>
+              <div class="fj-tags">
+                <span style="background:${a.cor}">${ESCOLAS[a.escola].nome}</span>
+                ${a.escolaSec ? `<span style="background:${ESCOLAS[a.escolaSec].cor}">${ESCOLAS[a.escolaSec].nome}</span>` : ''}
+                <span class="neutro">${a.formaNome}</span>
+                <span class="neutro">escala ${a.intensNome}</span>
+              </div>
+              <div class="fj-nums">
+                <div><label>Custo</label><b>${a.custo}</b><small>mana</small></div>
+                <div><label>${a.dano < 0 ? 'Cura' : 'Dano'}</label><b>${Math.abs(a.dano)}</b><small>${a.dano < 0 ? 'PV' : 'pontos'}</small></div>
+                <div><label>Recarga</label><b>${a.cd}</b><small>seg</small></div>
+                ${a.raio ? `<div><label>Raio</label><b>${a.raio}</b><small>metros</small></div>` : ''}
+              </div>
+              <div class="fj-fisica"><b>Lei física herdada:</b> ${a.fisica}</div>
+              <div class="fj-rel"><b>Como a Forja leu o seu texto:</b>${a.relatorio.map(l => `<div>${l}</div>`).join('')}</div>
+              <div class="fj-dicas"><b>Para melhorar:</b> ${dicasDoPoder(a).join(' ')}</div>
+            </div>` : `<div class="fj-vazio">Escreva o seu poder e clique em <b>Analisar</b>.<br><br>
+              A Forja vai mostrar aqui o elemento detectado, a forma, o dano, o custo e
+              <b>exatamente por que</b> chegou a esses números.</div>`}
+
+          ${b.poderes.length ? `<div class="fj-lista"><b>Seus poderes forjados (${b.poderes.length}/6)</b>
+            ${b.poderes.map((p, i) => `<div class="fj-item" style="--c:${p.cor}">
+              <span class="fj-nm">${p.nome}</span>
+              <span class="fj-meta">${ESCOLAS[p.escola].nome} · ${p.formaNome} · ${p.custo} mana · ${p.dano < 0 ? '+' + Math.abs(p.dano) + ' PV' : p.dano + ' dano'} · ${p.cd}s</span>
+              <button class="fj-del" data-del="${i}">✕</button></div>`).join('')}</div>` : ''}
+        </div>
+      </div>`;
+  }
+
   abaCorpo() {
     const b = this.build, r = RACES[b.raca];
     const sliders = [
@@ -336,7 +407,9 @@ export class Creator {
           <h4>Magia</h4>
           <ul>${b.escolas.map(e => `<li><b style="color:${ESCOLAS[e].cor}">${ESCOLAS[e].nome}</b> — ${ESCOLAS[e].fisica}</li>`).join('')}</ul>
           <h4>Grimório</h4>
-          <ul>${b.magias.map(m => `<li>${MAGIAS[m].nome} — ${MAGIAS[m].custo} mana · ${MAGIAS[m].desc}</li>`).join('')}</ul>
+          <ul>${b.magias.map(m => `<li>${MAGIAS[m].nome} — ${MAGIAS[m].custo} mana · ${MAGIAS[m].desc}</li>`).join('') || '<li>Nenhuma magia de escola</li>'}</ul>
+          <h4>Poderes forjados por você</h4>
+          <ul>${b.poderes.length ? b.poderes.map(p => `<li><b style="color:${p.cor}">${p.nome}</b> — ${ESCOLAS[p.escola].nome} · ${p.formaNome} · ${p.custo} mana · ${p.dano < 0 ? '+' + Math.abs(p.dano) + ' PV' : p.dano + ' dano'} · ${p.cd}s<br><small>${p.desc}</small></li>`).join('') : '<li>Nenhum — volte à aba <b>Forja de Poderes</b> e invente o seu.</li>'}</ul>
           <h4>Traços</h4>
           <ul>${b.tracos.length ? b.tracos.map(t => `<li>${TRACOS[t].nome} — ${TRACOS[t].desc}</li>`).join('') : '<li>Nenhum</li>'}</ul>
         </div>
@@ -433,6 +506,37 @@ export class Creator {
     });
     this.root.querySelectorAll('[data-cor]').forEach(el => el.oninput = () => { b.cores[el.dataset.cor] = el.value; this.rebuildAvatar(); });
     this.root.querySelectorAll('[data-sw]').forEach(el => el.onclick = () => { b.cores.pele = el.dataset.sw; this.rebuildAvatar(); this.renderBody(); });
+
+    // --- Forja de Poderes ---
+    const fjT = this.root.querySelector('#fjTexto');
+    const fjN = this.root.querySelector('#fjNome');
+    if (fjT) {
+      fjT.oninput = () => { this.poderTexto = fjT.value; };
+      fjN.oninput = () => { this.poderNome = fjN.value; };
+      const analisar = () => {
+        this.poderTexto = fjT.value; this.poderNome = fjN.value;
+        if (!this.poderTexto.trim()) return;
+        this.previaPoder = analisarPoder(this.poderTexto, computarFicha(b), b);
+        this.renderBody();
+      };
+      this.root.querySelector('#fjAnalisar').onclick = analisar;
+      fjT.onkeydown = e => { if (e.code === 'Enter' && e.ctrlKey) analisar(); };
+      this.root.querySelector('#fjCriar').onclick = () => {
+        if (!this.previaPoder || b.poderes.length >= 6) return;
+        const nome = (this.poderNome || '').trim() || 'Poder Inominado';
+        const id = 'custom_' + Date.now().toString(36) + Math.floor(Math.random() * 999).toString(36);
+        b.poderes.push(forjarMagia(id, nome, this.poderTexto, this.previaPoder));
+        this.previaPoder = null; this.poderTexto = ''; this.poderNome = '';
+        this.renderBody(); this.renderStats();
+      };
+      this.root.querySelectorAll('[data-ex]').forEach(el => el.onclick = () => {
+        fjT.value = el.dataset.ex; this.poderTexto = el.dataset.ex; analisar();
+      });
+      this.root.querySelectorAll('[data-del]').forEach(el => el.onclick = () => {
+        b.poderes.splice(+el.dataset.del, 1); this.renderBody();
+      });
+    }
+
     const nome = this.root.querySelector('#crNome'); if (nome) nome.oninput = () => { b.nome = nome.value || 'Sem-Nome'; this.renderStats(); };
     const bio = this.root.querySelector('#crBio'); if (bio) bio.oninput = () => { b.biografia = bio.value; };
   }

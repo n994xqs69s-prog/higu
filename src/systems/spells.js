@@ -19,7 +19,8 @@ export class SpellSystem {
   }
 
   custoAjustado(id, caster) {
-    const m = MAGIAS[id];
+    const m = this.def(id, caster);
+    if (!m) return 999;
     const bioma = biomeAt(caster.body.pos.x, caster.body.pos.z);
     let mult = 1 / (BIOME_INFO[bioma]?.mana || 1);
     // Regras físicas por escola vs bioma
@@ -33,8 +34,8 @@ export class SpellSystem {
   }
 
   /** Multiplicador de dano do ambiente + explicação textual (mostrada ao jogador). */
-  contexto(id, pos) {
-    const m = MAGIAS[id];
+  contexto(id, pos, caster) {
+    const m = this.def(id, caster) || { escola: 'runica' };
     const bioma = biomeAt(pos.x, pos.z);
     let mult = 1, notas = [];
     if (m.escola === 'fogo') {
@@ -54,8 +55,15 @@ export class SpellSystem {
     return { mult, notas, bioma };
   }
 
+  /** Resolve a definição da magia: catálogo oficial OU poder forjado pelo jogador. */
+  def(id, caster) {
+    if (MAGIAS[id]) return MAGIAS[id];
+    const p = caster?.build?.poderes?.find(x => x.id === id);
+    return p || null;
+  }
+
   conjurar(id, caster, direcao, alvoPos) {
-    const m = MAGIAS[id];
+    const m = this.def(id, caster);
     if (!m) return { ok: false, msg: 'Magia desconhecida.' };
     const custo = this.custoAjustado(id, caster);
     if (caster.mana < custo) return { ok: false, msg: `Mana insuficiente (${custo} necessários).` };
@@ -67,7 +75,7 @@ export class SpellSystem {
     caster.conjurando = 0.35;
 
     const origem = caster.body.pos.clone().add(new THREE.Vector3(0, caster.ficha.alcance * 1.4, 0));
-    const ctx = this.contexto(id, origem);
+    const ctx = this.contexto(id, origem, caster);
     let dano = Math.abs(m.dano) * caster.ficha.poderMagico * ctx.mult;
 
     // Falha caótica do Véu
@@ -77,8 +85,26 @@ export class SpellSystem {
       direcao = direcao.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), (Math.random() - 0.5) * 1.2);
     }
 
+    // Limitações que o jogador aceitou ao forjar o poder
+    if (m.custom && m.efeitos?.length) {
+      if (m.efeitos.includes('recuo')) {
+        const auto = Math.max(3, dano * 0.12);
+        caster.vida -= auto;
+        ctx.notas.push(`custo de sangue: −${Math.round(auto)} PV`);
+      }
+      if (m.efeitos.includes('enraiza')) { caster.preso = Math.max(caster.preso || 0, 1.2); ctx.notas.push('você fica imóvel por 1,2 s'); }
+      if (m.efeitos.includes('drena')) { caster.mana = 0; ctx.notas.push('drenou toda a sua mana'); }
+      if (m.efeitos.includes('instavel') && Math.random() < 0.18) {
+        dano *= 0.3;
+        direcao = direcao.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), (Math.random() - 0.5) * 1.4);
+        ctx.notas.push('⚡ o poder instável se desviou');
+      }
+      if (m.efeitos.includes('cast_lento')) caster.conjurando = 0.9;
+    }
+
     switch (m.tipo) {
       case 'projetil': this.spawnProjetil(id, caster, origem, direcao, dano, m); break;
+      case 'invocacao': this.spawnInvocacao(id, caster, origem, direcao, dano, m); break;
       case 'area': this.spawnArea(id, caster, alvoPos || origem.clone().addScaledVector(direcao, 14), dano, m); break;
       case 'cadeia': this.spawnCadeia(id, caster, origem, dano, m); break;
       case 'muro': this.spawnMuro(id, caster, origem.clone().addScaledVector(direcao, 7), m, 'fogo'); break;
@@ -113,6 +139,16 @@ export class SpellSystem {
     const gravidade = m.escola === 'terra' ? 1.0 : m.escola === 'agua' ? 0.5 : m.escola === 'raio' ? 0.0 : 0.12;
 
     this.projeteis.push({ id, mesh, body, dano, dono: caster, vida: 5, gravidade, escola: m.escola, luz });
+  }
+
+  spawnInvocacao(id, caster, origem, dir, dano, m) {
+    const cor = new THREE.Color(ESCOLAS[m.escola].cor);
+    const n = 1 + Math.floor((m.intens || 1) * 1.5);
+    for (let i = 0; i < n; i++) {
+      const pos = origem.clone().addScaledVector(dir, 4 + i * 1.6);
+      pos.x += (Math.random() - 0.5) * 3; pos.z += (Math.random() - 0.5) * 3;
+      this.game.invocar(caster, pos, dano, m.escola, cor);
+    }
   }
 
   spawnArea(id, caster, pos, dano, m) {
